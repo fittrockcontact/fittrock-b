@@ -15,7 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-// CORS configuration supporting production domain (www.fittrock.com, admin.fittrock.com) and dev
+// CORS configuration supporting production domains and dev
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -26,6 +26,9 @@ const allowedOrigins = [
   'https://www.fittrock.com',
   'https://fittrock.com',
   'https://admin.fittrock.com',
+  'https://www.lowerdesk.com',
+  'https://lowerdesk.com',
+  'https://admin.lowerdesk.com',
   FRONTEND_URL,
 ];
 
@@ -55,11 +58,19 @@ app.use(
 
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check Endpoint
+// Root & Health Check Endpoints
+app.get('/', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'Lowerdesk / Fittrock API Server',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    domain: 'api.fittrock.com',
+    domain: process.env.API_DOMAIN || 'api.lowerdesk.com',
     timestamp: new Date().toISOString(),
   });
 });
@@ -81,8 +92,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const startServer = (port: number, maxAttempts = 10) => {
   const server = app.listen(port, () => {
-    console.log(`🚀 Fittrock API Server running on port ${port}`);
-    console.log(`📍 Target Domain: api.fittrock.com`);
+    console.log(`🚀 API Server running on port ${port}`);
     console.log(`🌐 Allowed Frontend Origin: ${FRONTEND_URL}`);
   });
 
@@ -96,4 +106,10 @@ const startServer = (port: number, maxAttempts = 10) => {
   });
 };
 
-startServer(Number(PORT));
+// Only listen directly when running standalone (not in Vercel Serverless environment)
+if (!process.env.VERCEL && !process.env.NOW_REGION && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  startServer(Number(PORT));
+}
+
+export default app;
+
