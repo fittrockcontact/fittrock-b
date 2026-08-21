@@ -2,6 +2,7 @@
   "name": "fittrock-backend",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Backend API Server for Fittrock Ergonomics (api.fittrock.com)",
   "main": "dist/index.js",
   "scripts": {
@@ -17,7 +18,7 @@
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
-    "firebase-admin": "^14.2.0",
+    "firebase-admin": "^13.10.0",
     "postgres": "^3.4.9",
     "razorpay": "^2.9.8",
     "resend": "^6.18.1",
