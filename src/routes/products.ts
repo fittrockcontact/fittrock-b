@@ -215,6 +215,102 @@ router.get('/testimonials/all', async (_req: Request, res: Response) => {
   }
 });
 
+// POST /api/products/reviews/new - Submit a new review directly to Supabase database
+router.post('/reviews/new', async (req: Request, res: Response) => {
+  try {
+    const { name, authorName, rating, title, body, comment, productId } = req.body;
+
+    const customerName = (name || authorName || '').trim();
+    const reviewText = (body || comment || '').trim();
+    const starRating = Math.max(1, Math.min(5, Number(rating) || 5));
+    const reviewTitle = (title || 'Customer Review').trim();
+
+    if (!customerName) {
+      return res.status(400).json({ error: 'Please provide your name.' });
+    }
+    if (!reviewText) {
+      return res.status(400).json({ error: 'Please provide review comments.' });
+    }
+
+    const defaultAvatars = [
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
+    ];
+    const avatar = defaultAvatars[Math.floor(Math.random() * defaultAvatars.length)];
+
+    if (supabaseClient) {
+      // Find a default product_id if not provided
+      let targetProductId = productId;
+      if (!targetProductId) {
+        const { data: firstProd } = await supabaseClient.from('products').select('id').limit(1).single();
+        targetProductId = firstProd?.id;
+      }
+
+      const { data: newReview, error: insertError } = await supabaseClient
+        .from('reviews')
+        .insert({
+          product_id: targetProductId,
+          author_name: customerName,
+          author_role: 'Verified Customer',
+          author_avatar: avatar,
+          rating: starRating,
+          title: reviewTitle,
+          body: reviewText,
+          is_approved: true,
+          is_verified_purchase: true,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      return res.status(201).json({
+        success: true,
+        message: 'Review submitted successfully!',
+        review: {
+          id: newReview.id,
+          name: newReview.author_name,
+          customerName: newReview.author_name,
+          role: newReview.author_role,
+          avatar: newReview.author_avatar,
+          rating: newReview.rating,
+          comment: newReview.body,
+          body: newReview.body,
+          createdAt: newReview.created_at,
+        },
+      });
+    }
+
+    const [inserted] = await db
+      .insert(reviews)
+      .values({
+        productId: productId || 'e3ad2658-600b-4f9d-a418-b009d70f6239',
+        authorName: customerName,
+        authorRole: 'Verified Customer',
+        authorAvatar: avatar,
+        rating: starRating,
+        title: reviewTitle,
+        body: reviewText,
+        isApproved: true,
+        isVerifiedPurchase: true,
+      })
+      .returning();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Review submitted successfully!',
+      review: inserted,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to submit review';
+    console.error('Error submitting review to Supabase:', message);
+    return res.status(500).json({ error: message });
+  }
+});
+
 // GET /api/products/:slug - Fetch product by slug dynamically from Supabase database
 router.get('/:slug', async (req: Request, res: Response) => {
   const slugParam = req.params.slug;
@@ -262,3 +358,4 @@ router.get('/:slug', async (req: Request, res: Response) => {
 });
 
 export default router;
+
