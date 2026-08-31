@@ -69,7 +69,11 @@ router.get('/:slug', async (req: Request, res: Response) => {
 
       let colProducts: any[] = [];
       if (productIds.length > 0) {
-        const { data: prods } = await supabaseClient.from('products').select('*').in('id', productIds);
+        const { data: prods } = await supabaseClient
+          .from('products')
+          .select('*')
+          .in('id', productIds)
+          .eq('status', 'active');
         const { data: vars } = await supabaseClient.from('product_variants').select('*').in('product_id', productIds);
         const { data: imgs } = await supabaseClient.from('product_images').select('*').in('product_id', productIds);
 

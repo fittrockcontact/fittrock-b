@@ -1,6 +1,7 @@
 import { adminAuth } from './firebase-admin.js';
 import { db } from './db/index.js';
 import { customers, addresses } from './db/schema.js';
+import { supabaseClient } from './db/supabase.js';
 import { eq } from 'drizzle-orm';
 import { sendWelcomeEmail } from './email.js';
 
@@ -78,47 +79,121 @@ export async function ensureCustomerAccount(
     }
   }
 
-  // 2. PostgreSQL Customer Profile Provisioning
+  // 2. Supabase / PostgreSQL Customer Profile & Address Provisioning
   try {
-    const existing = await db
-      .select()
-      .from(customers)
-      .where(eq(customers.phone, phone || ''))
-      .limit(1);
+    if (supabaseClient) {
+      // 1. Ensure user exists in Supabase Auth to satisfy profiles.id FK
+      let supabaseUserId: string | null = null;
+      if (email) {
+        const { data: userData, error: userError } = await supabaseClient.auth.admin.createUser({
+          email: email.trim().toLowerCase(),
+          email_confirm: true,
+          user_metadata: { full_name: name },
+        });
 
-    let profileId: string;
-    if (existing.length === 0) {
-      const [newProfile] = await db
-        .insert(customers)
-        .values({
-          fullName: name,
-          phone: phone || null,
-          marketingOptIn: true,
-        })
-        .returning({ id: customers.id });
-      profileId = newProfile.id;
+        if (userData?.user?.id) {
+          supabaseUserId = userData.user.id;
+          isNewUser = true;
+        } else if (userError) {
+          const { data: listData } = await supabaseClient.auth.admin.listUsers();
+          const found = listData?.users?.find((u) => u.email?.toLowerCase() === email.trim().toLowerCase());
+          if (found) supabaseUserId = found.id;
+        }
+      }
+
+      if (!userId && supabaseUserId) {
+        userId = supabaseUserId;
+      }
+
+      if (supabaseUserId) {
+        // Upsert into profiles
+        const { data: prof } = await supabaseClient
+          .from('profiles')
+          .upsert({
+            id: supabaseUserId,
+            full_name: name,
+            phone: phone || null,
+            marketing_opt_in: true,
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        const profileId = prof?.id || supabaseUserId;
+
+        // Save shipping address if provided
+        if (shippingAddress && profileId) {
+          // Unset other default addresses for clean state
+          await supabaseClient
+            .from('addresses')
+            .update({ is_default: false })
+            .eq('user_id', profileId);
+
+          await supabaseClient.from('addresses').insert({
+            user_id: profileId,
+            type: 'shipping',
+            full_name: name,
+            phone: shippingAddress.phone || phone || '',
+            line1: shippingAddress.line1,
+            line2: shippingAddress.line2 || null,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            postal_code: shippingAddress.pincode,
+            country: 'India',
+            is_default: true,
+          });
+        }
+
+        // If new user and no Firebase setup link was generated, send general welcome email
+        if (isNewUser && !setupLink) {
+          try {
+            await sendWelcomeEmail(email, name);
+          } catch (mailErr) {
+            console.warn('Welcome email notice:', mailErr);
+          }
+        }
+      }
     } else {
-      profileId = existing[0].id;
-    }
+      const existing = await db
+        .select()
+        .from(customers)
+        .where(eq(customers.phone, phone || ''))
+        .limit(1);
 
-    // Save shipping address if provided and not yet present
-    if (shippingAddress && profileId) {
-      await db.insert(addresses).values({
-        userId: profileId,
-        type: 'shipping',
-        fullName: name,
-        phone: shippingAddress.phone || phone || '',
-        line1: shippingAddress.line1,
-        line2: shippingAddress.line2 || null,
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        postalCode: shippingAddress.pincode,
-        country: 'India',
-        isDefault: true,
-      });
+      let profileId: string;
+      if (existing.length === 0) {
+        const [newProfile] = await db
+          .insert(customers)
+          .values({
+            fullName: name,
+            phone: phone || null,
+            marketingOptIn: true,
+          })
+          .returning({ id: customers.id });
+        profileId = newProfile.id;
+      } else {
+        profileId = existing[0].id;
+      }
+
+      // Save shipping address if provided and not yet present
+      if (shippingAddress && profileId) {
+        await db.insert(addresses).values({
+          userId: profileId,
+          type: 'shipping',
+          fullName: name,
+          phone: shippingAddress.phone || phone || '',
+          line1: shippingAddress.line1,
+          line2: shippingAddress.line2 || null,
+          city: shippingAddress.city,
+          state: shippingAddress.state,
+          postalCode: shippingAddress.pincode,
+          country: 'India',
+          isDefault: true,
+        });
+      }
     }
   } catch (dbErr) {
-    console.error('Error syncing customer profile into DB:', dbErr);
+    console.warn('Customer profile sync note (non-critical):', dbErr);
   }
 
   return { userId, isNewUser, setupLink };

@@ -320,3 +320,38 @@ export const reviewsRelations = relations(reviews, ({ one }) => ({
     references: [products.id],
   }),
 }));
+
+// --- CONTACT INQUIRIES --- (Matches public.contact_inquiries)
+export const contactInquiries = pgTable('contact_inquiries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone'),
+  message: text('message').notNull(),
+  status: text('status').default('new').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// --- NEWSLETTER SUBSCRIBERS --- (Matches public.newsletter_subscribers)
+export const newsletterSubscribers = pgTable('newsletter_subscribers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  email: text('email').notNull().unique(),
+  subscribedAt: timestamp('subscribed_at').defaultNow().notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+});
+
+// --- CUSTOMER CARTS (Cross-device cloud cart sync) ---
+export const customerCarts = pgTable('customer_carts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => customers.id, { onDelete: 'cascade' }),
+  items: jsonb('items').notNull(),
+  appliedDiscount: jsonb('applied_discount'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+

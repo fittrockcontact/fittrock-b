@@ -103,13 +103,50 @@ function formatProduct(productRow: any, allVariants: any[], allImages: any[], al
       highlights: Array.isArray(img.features) ? img.features : img.features.highlights || [],
     }));
 
+  const rawDesc = productRow.description || '';
+  const rawShortDesc = productRow.short_description || productRow.shortDescription || '';
+
+  // Clean HTML and extract plain text
+  const cleanHtml = rawDesc
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<\/?(html|body|head)[^>]*>/gi, '')
+    .replace(/\s+data-[a-zA-Z0-9_-]+="[^"]*"/g, '')
+    .trim();
+
+  const cleanText = cleanHtml
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const shortDescription = rawShortDesc && !rawShortDesc.includes('<')
+    ? rawShortDesc
+    : cleanText.length > 240
+      ? cleanText.slice(0, 240).replace(/\s+\S*$/, '') + '...'
+      : cleanText || productRow.title;
+
   return {
     id: productRow.id,
     name: productRow.title,
     title: productRow.title,
     slug: productRow.slug,
-    description: productRow.description,
+    description: cleanHtml || cleanText || productRow.title,
+    descriptionText: cleanText,
+    shortDescription,
     brand: productRow.brand,
+    weightCapacityKg: productRow.weight_capacity_kg || productRow.weightCapacityKg || null,
+    heightRangeMm: productRow.height_range_mm || productRow.heightRangeMm || null,
+    warrantyMonths: productRow.warranty_months || productRow.warrantyMonths || 36,
+    motorType: productRow.motor_type || productRow.motorType || null,
     basePrice: basePriceNum.toFixed(2),
     compareAtPrice: comparePriceNum ? comparePriceNum.toFixed(2) : undefined,
     imageUrl: coverImage,

@@ -15,6 +15,28 @@ export interface OrderEmailData {
   shippingAddress?: string;
 }
 
+export interface SendEmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+}
+
+export async function sendEmail({ to, subject, html, from }: SendEmailOptions) {
+  try {
+    const data = await resend.emails.send({
+      from: from || DEFAULT_FROM_EMAIL,
+      to,
+      subject,
+      html,
+    });
+    return data;
+  } catch (error) {
+    console.warn('Could not send email via Resend:', error);
+    return null;
+  }
+}
+
 /**
  * Send order confirmation email upon payment capture
  */

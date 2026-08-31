@@ -8,6 +8,10 @@ import ordersRouter from './routes/orders.js';
 import discountsRouter from './routes/discounts.js';
 import collectionsRouter from './routes/collections.js';
 import adminRouter from './routes/admin.js';
+import contactRouter from './routes/contact.js';
+import newsletterRouter from './routes/newsletter.js';
+import customersRouter from './routes/customers.js';
+import cartRouter from './routes/cart.js';
 
 dotenv.config();
 
@@ -83,6 +87,10 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/discounts', discountsRouter);
 app.use('/api/collections', collectionsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/contact', contactRouter);
+app.use('/api/newsletter', newsletterRouter);
+app.use('/api/customers', customersRouter);
+app.use('/api/cart', cartRouter);
 
 // Global Error Handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
