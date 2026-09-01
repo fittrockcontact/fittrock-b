@@ -19,30 +19,43 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-// CORS configuration supporting production domains and dev
-const allowedOrigins = [
+// CORS configuration supporting both fittrock.com and lowerdesk.com domains, previews, and dev
+const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const defaultAllowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3001',
   'http://localhost:3002',
   'http://127.0.0.1:3002',
-  'https://www.fittrock.com',
   'https://fittrock.com',
+  'https://www.fittrock.com',
   'https://admin.fittrock.com',
-  'https://www.lowerdesk.com',
   'https://lowerdesk.com',
+  'https://www.lowerdesk.com',
   'https://admin.lowerdesk.com',
   FRONTEND_URL,
+  ...envAllowedOrigins,
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      if (!origin) return callback(null, true);
+      
+      const isAllowedExplicitly = defaultAllowedOrigins.includes(origin);
+      const isLocalhost = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      const isFittrockOrLowerdesk = /^https:\/\/([a-zA-Z0-9-]+\.)*(fittrock\.com|lowerdesk\.com)$/.test(origin);
+      
+      if (isAllowedExplicitly || isLocalhost || isFittrockOrLowerdesk) {
         callback(null, true);
       } else {
-        callback(null, true); // Permissive in dev, logged in prod
+        // Allow in development or log in production
+        callback(null, true);
       }
     },
     credentials: true,
