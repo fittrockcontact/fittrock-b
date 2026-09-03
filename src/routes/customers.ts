@@ -195,16 +195,35 @@ router.get('/orders', async (req: Request, res: Response) => {
       return res.json({ orders: [] });
     }
 
-    // Attach order items
+    // Attach order items and normalize rupee amounts
     const ordersWithItems = await Promise.all(
       (userOrders || []).map(async (ord: any) => {
         const { data: items } = await supabaseClient!
           .from('order_items')
           .select('*')
           .eq('order_id', ord.id);
+
+        const { data: shipments } = await supabaseClient!
+          .from('shipments')
+          .select('*')
+          .eq('order_id', ord.id);
+
+        const rawTotal = parseFloat(ord.total_amount || '0');
+        const totalRupees = rawTotal > 100000 ? (rawTotal / 100).toFixed(0) : rawTotal;
+
         return {
           ...ord,
-          items: items || [],
+          total_amount: totalRupees,
+          totalAmount: totalRupees,
+          shipments: shipments || [],
+          items: (items || []).map((it: any) => {
+            const rawUnit = parseFloat(it.unit_price || '0');
+            const unitRupees = rawUnit > 100000 ? (rawUnit / 100).toFixed(0) : rawUnit;
+            return {
+              ...it,
+              unit_price: unitRupees,
+            };
+          }),
         };
       })
     );

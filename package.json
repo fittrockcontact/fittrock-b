@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Backend API Server for Fittrock Ergonomics (api.fittrock.com)",
+  "description": "Backend API Server for Fittrock Ergonomics (api.lowerdesk.com)",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -14,11 +14,15 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "@types/pdfkit": "^0.17.6",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "firebase-admin": "^13.10.0",
+    "multer": "^2.3.0",
+    "pdfkit": "^0.20.2",
     "postgres": "^3.4.9",
     "razorpay": "^2.9.8",
     "resend": "^6.18.1",
@@ -27,6 +31,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.17.19",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.8",

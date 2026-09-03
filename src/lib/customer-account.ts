@@ -21,6 +21,7 @@ export interface CustomerAccountParams {
 
 export interface CustomerAccountResult {
   userId?: string;
+  addressId?: string;
   isNewUser: boolean;
   setupLink?: string;
 }
@@ -34,6 +35,7 @@ export async function ensureCustomerAccount(
 ): Promise<CustomerAccountResult> {
   const { email, name, phone, shippingAddress } = params;
   let userId: string | undefined;
+  let addressId: string | undefined;
   let isNewUser = false;
   let setupLink: string | undefined;
 
@@ -129,7 +131,7 @@ export async function ensureCustomerAccount(
             .update({ is_default: false })
             .eq('user_id', profileId);
 
-          await supabaseClient.from('addresses').insert({
+          const { data: insertedAddr } = await supabaseClient.from('addresses').insert({
             user_id: profileId,
             type: 'shipping',
             full_name: name,
@@ -141,7 +143,23 @@ export async function ensureCustomerAccount(
             postal_code: shippingAddress.pincode,
             country: 'India',
             is_default: true,
-          });
+          }).select('id').single();
+
+          if (insertedAddr?.id) {
+            addressId = insertedAddr.id;
+          }
+        }
+
+        if (!addressId && profileId) {
+          const { data: existingAddr } = await supabaseClient
+            .from('addresses')
+            .select('id')
+            .eq('user_id', profileId)
+            .order('is_default', { ascending: false })
+            .limit(1);
+          if (existingAddr?.[0]?.id) {
+            addressId = existingAddr[0].id;
+          }
         }
 
         // If new user and no Firebase setup link was generated, send general welcome email
@@ -177,7 +195,7 @@ export async function ensureCustomerAccount(
 
       // Save shipping address if provided and not yet present
       if (shippingAddress && profileId) {
-        await db.insert(addresses).values({
+        const [newAddr] = await db.insert(addresses).values({
           userId: profileId,
           type: 'shipping',
           fullName: name,
@@ -189,12 +207,15 @@ export async function ensureCustomerAccount(
           postalCode: shippingAddress.pincode,
           country: 'India',
           isDefault: true,
-        });
+        }).returning({ id: addresses.id });
+        if (newAddr?.id) {
+          addressId = newAddr.id;
+        }
       }
     }
   } catch (dbErr) {
     console.warn('Customer profile sync note (non-critical):', dbErr);
   }
 
-  return { userId, isNewUser, setupLink };
+  return { userId, addressId, isNewUser, setupLink };
 }

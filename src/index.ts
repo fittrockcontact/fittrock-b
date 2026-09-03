@@ -12,6 +12,8 @@ import contactRouter from './routes/contact.js';
 import newsletterRouter from './routes/newsletter.js';
 import customersRouter from './routes/customers.js';
 import cartRouter from './routes/cart.js';
+import uploadRouter from './routes/upload.js';
+import salesRouter from './routes/sales.js';
 
 dotenv.config();
 
@@ -104,6 +106,8 @@ app.use('/api/contact', contactRouter);
 app.use('/api/newsletter', newsletterRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/cart', cartRouter);
+app.use('/api/upload', uploadRouter);
+app.use('/api/sales', salesRouter);
 
 // Global Error Handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

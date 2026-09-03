@@ -246,6 +246,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     references: [customers.id],
   }),
   items: many(orderItems),
+  shipments: many(shipments),
 }));
 
 // --- ORDER ITEMS --- (Matches public.order_items)
@@ -353,5 +354,121 @@ export const customerCarts = pgTable('customer_carts', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// --- LEADS / CRM ---
+export const leads = pgTable(
+  'leads',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    email: text('email'),
+    phone: text('phone').notNull(),
+    company: text('company'),
+    city: text('city'),
+    state: text('state'),
+    gstNumber: text('gst_number'),
+    dealValue: numeric('deal_value', { precision: 12, scale: 0 }).default('0'),
+    stage: text('stage').default('new').notNull(), // new, contacted, qualified, proposal_sent, negotiation, won, lost
+    priority: text('priority').default('warm').notNull(), // hot, warm, cold
+    source: text('source').default('manual').notNull(), // website_inquiry, phone, whatsapp, b2b, referral, manual
+    notes: text('notes'),
+    assignedTo: text('assigned_to'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('leads_phone_idx').on(table.phone),
+    index('leads_stage_idx').on(table.stage),
+    index('leads_priority_idx').on(table.priority),
+  ]
+);
+
+export const leadsRelations = relations(leads, ({ many }) => ({
+  activities: many(leadActivities),
+  reminders: many(leadReminders),
+}));
+
+// --- LEAD ACTIVITIES (Calls, WhatsApp, Meetings, Notes) ---
+export const leadActivities = pgTable(
+  'lead_activities',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // call, whatsapp, email, meeting, note
+    outcome: text('outcome'), // connected, busy, no_answer, interested, not_interested, callback_requested
+    durationSeconds: integer('duration_seconds').default(0),
+    notes: text('notes'),
+    performedBy: text('performed_by'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('lead_activities_lead_idx').on(table.leadId)]
+);
+
+export const leadActivitiesRelations = relations(leadActivities, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadActivities.leadId],
+    references: [leads.id],
+  }),
+}));
+
+// --- LEAD REMINDERS / FOLLOW-UPS ---
+export const leadReminders = pgTable(
+  'lead_reminders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    leadId: uuid('lead_id')
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    dueAt: timestamp('due_at').notNull(),
+    priority: text('priority').default('medium').notNull(), // low, medium, high, urgent
+    status: text('status').default('pending').notNull(), // pending, completed, snoozed
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('lead_reminders_due_idx').on(table.dueAt),
+    index('lead_reminders_status_idx').on(table.status),
+  ]
+);
+
+export const leadRemindersRelations = relations(leadReminders, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadReminders.leadId],
+    references: [leads.id],
+  }),
+}));
+
+// --- SHIPMENTS (Multi-courier & Direct Delivery) ---
+export const shipments = pgTable(
+  'shipments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    deliveryType: text('delivery_type').default('courier').notNull(), // courier | direct
+    carrierName: text('carrier_name'),
+    trackingNumber: text('tracking_number'),
+    trackingUrl: text('tracking_url'),
+    driverName: text('driver_name'),
+    driverPhone: text('driver_phone'),
+    deliveryNotes: text('delivery_notes'),
+    status: text('status').default('in_transit').notNull(), // pending, in_transit, out_for_delivery, delivered
+    shippedAt: timestamp('shipped_at').defaultNow(),
+    deliveredAt: timestamp('delivered_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('shipments_order_idx').on(table.orderId)]
+);
+
+export const shipmentsRelations = relations(shipments, ({ one }) => ({
+  order: one(orders, {
+    fields: [shipments.orderId],
+    references: [orders.id],
+  }),
+}));
+
 
 

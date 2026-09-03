@@ -13,6 +13,7 @@ export interface OrderEmailData {
   itemName?: string;
   itemsCount?: number;
   shippingAddress?: string;
+  invoicePdf?: Buffer;
 }
 
 export interface SendEmailOptions {
@@ -20,15 +21,20 @@ export interface SendEmailOptions {
   subject: string;
   html: string;
   from?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+  }>;
 }
 
-export async function sendEmail({ to, subject, html, from }: SendEmailOptions) {
+export async function sendEmail({ to, subject, html, from, attachments }: SendEmailOptions) {
   try {
     const data = await resend.emails.send({
       from: from || DEFAULT_FROM_EMAIL,
       to,
       subject,
       html,
+      attachments,
     });
     return data;
   } catch (error) {
@@ -38,7 +44,7 @@ export async function sendEmail({ to, subject, html, from }: SendEmailOptions) {
 }
 
 /**
- * Send order confirmation email upon payment capture
+ * Send order confirmation email upon payment capture with attached Tax Invoice PDF
  */
 export async function sendOrderConfirmationEmail(toEmail: string, orderData: OrderEmailData) {
   try {
@@ -47,10 +53,20 @@ export async function sendOrderConfirmationEmail(toEmail: string, orderData: Ord
         ? orderData.totalAmount.toFixed(2)
         : orderData.totalAmount;
 
+    const attachments = orderData.invoicePdf
+      ? [
+          {
+            filename: `Tax-Invoice-${orderData.orderId}.pdf`,
+            content: orderData.invoicePdf,
+          },
+        ]
+      : undefined;
+
     const data = await resend.emails.send({
       from: DEFAULT_FROM_EMAIL,
       to: toEmail,
-      subject: `Order Confirmation #${orderData.orderId.slice(0, 8)} - Fittrock Ergonomics`,
+      subject: `Order Confirmation #${orderData.orderId} - Fittrock Ergonomics (Invoice Attached)`,
+      attachments,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #18181b; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px;">
           <div style="text-align: center; margin-bottom: 24px;">
@@ -60,8 +76,12 @@ export async function sendOrderConfirmationEmail(toEmail: string, orderData: Ord
 
           <h2 style="font-size: 18px; font-weight: 700; color: #09090b; margin-top: 0;">Thank you for your order${orderData.customerName ? `, ${orderData.customerName}` : ''}!</h2>
           <p style="font-size: 14px; line-height: 1.6; color: #3f3f46;">
-            We've received your payment of <strong>₹${formattedAmount}</strong> for Order <strong>#${orderData.orderId.slice(0, 8)}</strong>.
+            We've received your payment of <strong>₹${formattedAmount}</strong> for Order <strong>#${orderData.orderId}</strong>.
           </p>
+
+          <div style="background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #92400e;">
+            📄 <strong>Official Tax Invoice Attached:</strong> Your GST tax invoice with 5-year warranty certificate has been generated and attached as a PDF to this email.
+          </div>
 
           <div style="background-color: #f4f4f5; border-radius: 12px; padding: 16px; margin: 20px 0;">
             <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: 600; color: #27272a;">Order Summary</p>
@@ -70,12 +90,12 @@ export async function sendOrderConfirmationEmail(toEmail: string, orderData: Ord
           </div>
 
           <p style="font-size: 14px; line-height: 1.6; color: #3f3f46;">
-            Our logistics team is preparing your package for express dispatch. You will receive an SMS and email tracking update once the carrier scans your package.
+            Our logistics team is preparing your package for express dispatch from our Pune fulfillment center. You will receive an SMS and tracking update once the courier scans your package.
           </p>
 
           <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #f4f4f5; text-align: center; color: #71717a; font-size: 12px;">
-            <p style="margin: 0;">Questions? Reply directly to this email or reach us at <a href="mailto:team@fittrock.com" style="color: #d97706; text-decoration: none;">team@fittrock.com</a>.</p>
-            <p style="margin: 8px 0 0 0; font-size: 11px; color: #a1a1aa;">© ${new Date().getFullYear()} Fittrock Ergonomics. All rights reserved.</p>
+            <p style="margin: 0;">Questions? Reply directly to this email or reach us at <a href="mailto:contact@fittrock.com" style="color: #d97706; text-decoration: none;">contact@fittrock.com</a>.</p>
+            <p style="margin: 8px 0 0 0; font-size: 11px; color: #a1a1aa;">Fittrock Ergonomics LLP · Pune, Maharashtra · Phone: +91 8087827905</p>
           </div>
         </div>
       `,

@@ -115,6 +115,7 @@ function formatProduct(productRow: any, allVariants: any[], allImages: any[], al
     .replace(/<!DOCTYPE[^>]*>/gi, '')
     .replace(/<\/?(html|body|head)[^>]*>/gi, '')
     .replace(/\s+data-[a-zA-Z0-9_-]+="[^"]*"/g, '')
+    .replace(/<img(?![^>]*\bsrc\s*=\s*['"][^'"]+['"])[^>]*>/gi, '')
     .trim();
 
   const cleanText = cleanHtml
