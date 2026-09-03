@@ -48,13 +48,13 @@ router.get('/stats', async (_req: Request, res: Response) => {
       const { count: pendingOrders } = await supabaseClient
         .from('orders')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['pending', 'pending_approval']);
+        .eq('status', 'pending');
 
       // 4. Orders ready to ship
       const { count: readyToShipOrders } = await supabaseClient
         .from('orders')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['confirmed', 'processing', 'paid']);
+        .in('status', ['confirmed', 'processing']);
 
       // 5. Orders shipped today
       const { count: shippedToday } = await supabaseClient
@@ -125,12 +125,12 @@ router.get('/stats', async (_req: Request, res: Response) => {
     const [pendingOrdersRes] = await db
       .select({ count: count() })
       .from(orders)
-      .where(inArray(orders.status, ['pending', 'pending_approval']));
+      .where(eq(orders.status, 'pending'));
 
     const [readyToShipRes] = await db
       .select({ count: count() })
       .from(orders)
-      .where(inArray(orders.status, ['confirmed', 'processing', 'paid']));
+      .where(inArray(orders.status, ['confirmed', 'processing']));
 
     return res.json({
       success: true,
@@ -729,9 +729,9 @@ router.get('/orders', async (req: Request, res: Response) => {
         .order('placed_at', { ascending: false });
 
       if (status === 'pending_acceptance') {
-        query = query.in('status', ['pending', 'pending_approval']);
+        query = query.eq('status', 'pending');
       } else if (status === 'ready_to_ship') {
-        query = query.in('status', ['confirmed', 'processing', 'paid']);
+        query = query.in('status', ['confirmed', 'processing']);
       } else if (status === 'shipped') {
         query = query.in('status', ['shipped', 'out_for_delivery']);
       } else if (status === 'delivered') {
@@ -745,14 +745,46 @@ router.get('/orders', async (req: Request, res: Response) => {
         query = query.or(`order_number.ilike.${s}`);
       }
 
-      const { data, error } = await query;
+      const [{ data, error }, pendingCount, readyCount, shippedCount, deliveredCount, allCount] = await Promise.all([
+        query,
+        supabaseClient.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabaseClient.from('orders').select('*', { count: 'exact', head: true }).in('status', ['confirmed', 'processing']),
+        supabaseClient.from('orders').select('*', { count: 'exact', head: true }).in('status', ['shipped', 'out_for_delivery']),
+        supabaseClient.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+        supabaseClient.from('orders').select('*', { count: 'exact', head: true }),
+      ]);
+
       if (error) throw error;
 
-      return res.json({ success: true, orders: data || [] });
+      return res.json({
+        success: true,
+        orders: data || [],
+        counts: {
+          pending_acceptance: pendingCount.count ?? 0,
+          ready_to_ship: readyCount.count ?? 0,
+          shipped: shippedCount.count ?? 0,
+          delivered: deliveredCount.count ?? 0,
+          all: allCount.count ?? 0,
+        },
+      });
     }
 
     // Fallback Drizzle ORM
+    let statusFilter = undefined;
+    if (status === 'pending_acceptance') {
+      statusFilter = eq(orders.status, 'pending');
+    } else if (status === 'ready_to_ship') {
+      statusFilter = inArray(orders.status, ['confirmed', 'processing']);
+    } else if (status === 'shipped') {
+      statusFilter = inArray(orders.status, ['shipped', 'out_for_delivery']);
+    } else if (status === 'delivered') {
+      statusFilter = eq(orders.status, 'delivered');
+    } else if (status !== 'all' && typeof status === 'string') {
+      statusFilter = eq(orders.status, status as any);
+    }
+
     const ords = await db.query.orders.findMany({
+      where: statusFilter,
       orderBy: [desc(orders.placedAt)],
       with: {
         customer: true,
@@ -761,7 +793,17 @@ router.get('/orders', async (req: Request, res: Response) => {
       },
     });
 
-    return res.json({ success: true, orders: ords });
+    return res.json({
+      success: true,
+      orders: ords,
+      counts: {
+        pending_acceptance: 0,
+        ready_to_ship: 0,
+        shipped: 0,
+        delivered: 0,
+        all: ords.length,
+      },
+    });
   } catch (err: any) {
     console.error('Error fetching sales orders:', err);
     return res.status(500).json({ error: err.message || 'Failed to fetch sales orders' });
@@ -1063,11 +1105,11 @@ router.post('/orders/create', async (req: Request, res: Response) => {
           shipping_address_id: addressId,
           billing_address_id: addressId,
           status: paymentMethod === 'cod' ? 'confirmed' : 'pending',
-          subtotal: Number(subtotal),
-          discount_amount: Number(discountAmount),
-          shipping_amount: Number(shippingAmount),
-          tax_amount: Number(taxAmount),
-          total_amount: Number(totalAmount),
+          subtotal: Math.round(Number(subtotal) * 100),
+          discount_amount: Math.round(Number(discountAmount) * 100),
+          shipping_amount: Math.round(Number(shippingAmount) * 100),
+          tax_amount: Math.round(Number(taxAmount) * 100),
+          total_amount: Math.round(Number(totalAmount) * 100),
           requires_gst_invoice: !!customer.gstNumber,
           gst_number: customer.gstNumber || null,
           customer_note: customerNote || null,
@@ -1082,15 +1124,17 @@ router.post('/orders/create', async (req: Request, res: Response) => {
 
       // 4. Create order items and adjust stock
       for (const item of items) {
+        const uPrice = Math.round(Number(item.unitPrice) * 100);
+        const lTotal = Math.round(Number(item.lineTotal) * 100);
         await supabaseClient.from('order_items').insert({
           order_id: newOrder.id,
           variant_id: item.variantId || null,
           product_title: item.productTitle,
           variant_title: item.variantTitle || null,
           sku: item.sku || null,
-          unit_price: Number(item.unitPrice),
+          unit_price: uPrice,
           quantity: Number(item.quantity),
-          line_total: Number(item.lineTotal),
+          line_total: lTotal,
         });
 
         // Decrement stock if variant exists
