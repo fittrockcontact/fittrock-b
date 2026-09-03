@@ -186,7 +186,7 @@ router.get('/orders', async (req: Request, res: Response) => {
 
     const { data: userOrders, error: ordErr } = await supabaseClient
       .from('orders')
-      .select('*')
+      .select('*, shipping_address:addresses!orders_shipping_address_id_fkey(*)')
       .eq('user_id', customerId)
       .order('placed_at', { ascending: false });
 
@@ -206,22 +206,29 @@ router.get('/orders', async (req: Request, res: Response) => {
         const { data: shipments } = await supabaseClient!
           .from('shipments')
           .select('*')
-          .eq('order_id', ord.id);
+          .eq('order_id', ord.id)
+          .order('created_at', { ascending: false });
 
         const rawTotal = parseFloat(ord.total_amount || '0');
-        const totalRupees = rawTotal > 100000 ? (rawTotal / 100).toFixed(0) : rawTotal;
+        const totalRupees = rawTotal >= 10000 ? (rawTotal / 100).toFixed(0) : rawTotal;
+        const rawSubtotal = parseFloat(ord.subtotal || '0');
+        const subtotalRupees = rawSubtotal >= 10000 ? (rawSubtotal / 100).toFixed(0) : rawSubtotal;
 
         return {
           ...ord,
           total_amount: totalRupees,
           totalAmount: totalRupees,
+          subtotal: subtotalRupees,
           shipments: shipments || [],
           items: (items || []).map((it: any) => {
             const rawUnit = parseFloat(it.unit_price || '0');
-            const unitRupees = rawUnit > 100000 ? (rawUnit / 100).toFixed(0) : rawUnit;
+            const unitRupees = rawUnit >= 10000 ? (rawUnit / 100).toFixed(0) : rawUnit;
+            const rawLine = parseFloat(it.line_total || '0');
+            const lineRupees = rawLine >= 10000 ? (rawLine / 100).toFixed(0) : rawLine;
             return {
               ...it,
               unit_price: unitRupees,
+              line_total: lineRupees,
             };
           }),
         };
