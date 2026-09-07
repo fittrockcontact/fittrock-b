@@ -76,6 +76,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 
 // Root & Health Check Endpoints
 app.get('/', (_req: Request, res: Response) => {

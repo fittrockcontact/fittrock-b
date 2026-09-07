@@ -18,6 +18,7 @@ const createOrderSchema = z.object({
       z.object({
         variantId: z.string(),
         quantity: z.number().int().positive(),
+        price: z.number().optional(),
       })
     )
     .min(1, 'Cart cannot be empty'),
@@ -86,8 +87,8 @@ router.post('/create-order', async (req: Request, res: Response) => {
           });
         }
 
-        const unitPricePaise = foundVar ? parseFloat(foundVar.price) : 0;
-        const unitPriceRupees = parsePrice(foundVar?.price || 0);
+        const unitPricePaise = foundVar ? parseFloat(foundVar.price) : (item.price || 0);
+        const unitPriceRupees = foundVar ? parsePrice(foundVar.price) : (item.price || 0);
         subtotalRupees += unitPriceRupees * item.quantity;
 
         validatedOrderItems.push({
@@ -117,8 +118,8 @@ router.post('/create-order', async (req: Request, res: Response) => {
           });
         }
 
-        const unitPricePaise = found ? parseFloat(found.variant.price) : 0;
-        const unitPriceRupees = found ? parsePrice(found.variant.price) : 0;
+        const unitPricePaise = found ? parseFloat(found.variant.price) : (item.price || 0);
+        const unitPriceRupees = found ? parsePrice(found.variant.price) : (item.price || 0);
         subtotalRupees += unitPriceRupees * item.quantity;
 
         validatedOrderItems.push({
