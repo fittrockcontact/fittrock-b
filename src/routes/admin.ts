@@ -3,10 +3,9 @@ import { db } from '../lib/db/index.js';
 import { orders, products, customers, productVariants, productImages, reviews, addresses, orderItems } from '../lib/db/schema.js';
 import { desc, count, sql, eq } from 'drizzle-orm';
 import { supabaseClient } from '../lib/db/supabase.js';
-import { optionalFirebaseAuth } from '../middleware/firebase-auth.js';
 
+// Mounted behind requireAdminAuth in src/index.ts
 const router = Router();
-router.use(optionalFirebaseAuth);
 
 // GET /api/admin/stats - get comprehensive dashboard metrics
 router.get('/stats', async (_req: Request, res: Response) => {

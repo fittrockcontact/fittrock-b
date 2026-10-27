@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { adminAuth } from '../lib/firebase-admin.js';
+import { tokenAuth } from '../lib/firebase-admin.js';
 
 export const ADMIN_EMAILS = [
   'fittrock.contact@gmail.com',
@@ -10,12 +10,7 @@ export const ADMIN_EMAILS = [
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  const envAdmins = (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  const allAdmins = [...ADMIN_EMAILS.map((e) => e.toLowerCase()), ...envAdmins];
+  const allAdmins = [...ADMIN_EMAILS.map((e) => e.toLowerCase()), ...envEmails('ADMIN_EMAILS')];
   return allAdmins.includes(normalized);
 }
 
@@ -29,41 +24,78 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+function envEmails(name: string): string[] {
+  return (process.env[name] || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Sales reps listed in the SALES_EMAILS env var (comma-separated).
+ * Admins always have sales access too.
+ */
+export function isSalesEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return isAdminEmail(normalized) || envEmails('SALES_EMAILS').includes(normalized);
+}
+
+function attachUser(req: AuthenticatedRequest, decodedToken: Record<string, any>) {
+  req.user = {
+    ...decodedToken,
+    uid: decodedToken.uid,
+    email: decodedToken.email,
+    name: decodedToken.name,
+    picture: decodedToken.picture,
+  };
+}
+
+/**
+ * Builds a middleware that verifies the Firebase ID token in the
+ * Authorization header and, if given, checks the account's email.
+ * Fails closed: if tokens cannot be verified, the request is rejected.
+ */
+function requireVerifiedUser(isAllowed?: (email: string | undefined) => boolean, area = 'this area') {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+    }
+
+    if (!tokenAuth) {
+      console.error('Firebase token verifier is not available; rejecting request');
+      return res.status(503).json({ error: 'Authentication is temporarily unavailable' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1].trim();
+
+    let decodedToken;
+    try {
+      decodedToken = await tokenAuth.verifyIdToken(idToken);
+    } catch (err: any) {
+      console.error('Firebase token verification error:', err.message);
+      return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+    }
+
+    if (isAllowed && !isAllowed(decodedToken.email)) {
+      console.warn(`Unauthorized access attempt to ${area} from: ${decodedToken.email}`);
+      return res.status(403).json({
+        error: `Forbidden: Account ${decodedToken.email} is not authorized for ${area}.`,
+      });
+    }
+
+    attachUser(req, decodedToken);
+    next();
+  };
+}
+
 /**
  * Middleware that requires a valid Firebase ID token in Authorization header
  */
-export async function requireFirebaseAuth(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
-  }
+export const requireFirebaseAuth = requireVerifiedUser();
 
-  const idToken = authHeader.split('Bearer ')[1].trim();
-
-  if (!adminAuth) {
-    console.warn('Firebase Admin is not initialized, skipping token verification in dev');
-    return next();
-  }
-
-  try {
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    req.user = {
-      ...decodedToken,
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      name: decodedToken.name,
-      picture: decodedToken.picture,
-    };
-    next();
-  } catch (err: any) {
-    console.error('Firebase token verification error:', err.message);
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
-  }
-}
+const verifyAdmin = requireVerifiedUser(isAdminEmail, 'administrator access');
 
 /**
  * Middleware that enforces both valid Firebase Auth and Admin Email Whitelist
@@ -73,49 +105,18 @@ export async function requireAdminAuth(
   res: Response,
   next: NextFunction
 ) {
-  const authHeader = req.headers.authorization;
-
   // Allow server-to-server calls with secret bypass if configured
   const apiKey = req.headers['x-admin-key'] as string;
   if (apiKey && process.env.ADMIN_SECRET_KEY && apiKey === process.env.ADMIN_SECRET_KEY) {
     return next();
   }
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Administrator authentication required' });
-  }
-
-  const idToken = authHeader.split('Bearer ')[1].trim();
-
-  if (!adminAuth) {
-    console.warn('Firebase Admin is not initialized, skipping admin token verification in dev');
-    return next();
-  }
-
-  try {
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    const email = decodedToken.email;
-
-    if (!isAdminEmail(email)) {
-      console.warn(`Unauthorized admin access attempt from: ${email}`);
-      return res.status(403).json({
-        error: `Forbidden: Account ${email} is not authorized for administrator access.`,
-      });
-    }
-
-    req.user = {
-      ...decodedToken,
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      name: decodedToken.name,
-      picture: decodedToken.picture,
-    };
-    next();
-  } catch (err: any) {
-    console.error('Admin token verification error:', err.message);
-    return res.status(401).json({ error: 'Unauthorized: Invalid admin token' });
-  }
+  return verifyAdmin(req, res, next);
 }
+
+/**
+ * Middleware for the sales dashboard: admins plus SALES_EMAILS accounts
+ */
+export const requireSalesAuth = requireVerifiedUser(isSalesEmail, 'the sales dashboard');
 
 /**
  * Optional Firebase Auth middleware: attaches user if token is present and valid
@@ -126,17 +127,10 @@ export async function optionalFirebaseAuth(
   next: NextFunction
 ) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ') && adminAuth) {
+  if (authHeader && authHeader.startsWith('Bearer ') && tokenAuth) {
     const idToken = authHeader.split('Bearer ')[1].trim();
     try {
-      const decodedToken = await adminAuth.verifyIdToken(idToken);
-      req.user = {
-        ...decodedToken,
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        name: decodedToken.name,
-        picture: decodedToken.picture,
-      };
+      attachUser(req, await tokenAuth.verifyIdToken(idToken));
     } catch {
       // Ignore errors for optional auth
     }
