@@ -14,8 +14,15 @@ import {
 } from '../lib/db/schema.js';
 import { desc, asc, eq, sql, and, or, ilike, inArray, gte, lte, count } from 'drizzle-orm';
 import { supabaseClient } from '../lib/db/supabase.js';
+import { AuthenticatedRequest } from '../middleware/firebase-auth.js';
 
+// Mounted behind requireSalesAuth in src/index.ts
 const router = Router();
+
+// GET /api/sales/me - lets the dashboard confirm the signed-in rep has access
+router.get('/me', (req: AuthenticatedRequest, res: Response) => {
+  return res.json({ email: req.user?.email ?? null });
+});
 
 // ==========================================
 // 1. STATS / DAILY COCKPIT METRICS

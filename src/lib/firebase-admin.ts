@@ -39,4 +39,20 @@ try {
   console.warn('⚠️ Firebase Admin SDK initialization warning:', error);
 }
 
-export { adminApp, adminAuth, adminDb };
+// Verifying Firebase ID tokens only needs the project ID (Google's public
+// signing keys are fetched automatically), so admin and sales routes stay
+// protected even when no service account key is configured.
+let tokenAuth: Auth | null = adminAuth;
+if (!tokenAuth) {
+  try {
+    const verifierName = 'token-verifier';
+    const verifierApp =
+      getApps().find((a) => a.name === verifierName) ||
+      initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || 'fittrock' }, verifierName);
+    tokenAuth = getAuth(verifierApp);
+  } catch (error) {
+    console.error('⚠️ Could not initialize Firebase token verifier:', error);
+  }
+}
+
+export { adminApp, adminAuth, adminDb, tokenAuth };

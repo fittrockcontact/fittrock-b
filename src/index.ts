@@ -14,6 +14,7 @@ import customersRouter from './routes/customers.js';
 import cartRouter from './routes/cart.js';
 import uploadRouter from './routes/upload.js';
 import salesRouter from './routes/sales.js';
+import { requireAdminAuth, requireSalesAuth } from './middleware/firebase-auth.js';
 
 dotenv.config();
 
@@ -99,16 +100,16 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/products', productsRouter);
-app.use('/api/orders', ordersRouter);
+app.use('/api/orders', requireAdminAuth, ordersRouter);
 app.use('/api/discounts', discountsRouter);
 app.use('/api/collections', collectionsRouter);
-app.use('/api/admin', adminRouter);
+app.use('/api/admin', requireAdminAuth, adminRouter);
 app.use('/api/contact', contactRouter);
 app.use('/api/newsletter', newsletterRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/cart', cartRouter);
-app.use('/api/upload', uploadRouter);
-app.use('/api/sales', salesRouter);
+app.use('/api/upload', requireAdminAuth, uploadRouter);
+app.use('/api/sales', requireSalesAuth, salesRouter);
 
 // Global Error Handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
